@@ -1,0 +1,24 @@
+flowchart TB
+  subgraph prod[Production]
+    direction TB
+    US[US region] --> DB12[(CockroachDB 1-2)]
+    ASIA[Asia region - Singapore] --> DB34[(CockroachDB 3-4)]
+    DB12 <-->|join db 1,2,3,4| DB34
+    DB12 --> HA1[HAProxy]
+    DB34 --> HA2[HAProxy]
+    HA1 --> SVC1[Service]
+    HA2 --> SVC2[Service]
+    HA1 --- R1[(Redis)]
+    HA2 --- R2[(Redis)]
+    CL[Client] --> GEO[Check IP location service<br/>geoip2, returns the region domain]
+    GEO --> CL
+    CL --> SVC1
+    CL --> SVC2
+  end
+  subgraph dev[Development]
+    D1[(CockroachDB 1)] <-->|join db 1,2| D2[(CockroachDB 2)]
+    D1 --> HA3[HAProxy]
+    D2 --> HA3
+    HA3 --> SVC3[Service]
+    D3[Client] --> SVC3
+  end

@@ -1,0 +1,12 @@
+flowchart LR
+  C[Clients / game servers] --> LB[Nginx<br/>load balancer]
+  LB --> LS1[Log service<br/>key - value]
+  LB --> LS2[Log service<br/>key - value]
+  LB --> LS3[Log service<br/>key - value]
+  LS1 --> V[Vector.dev]
+  LS2 --> V
+  LS3 --> V
+  V --> CH[(ClickHouse)]
+  CH -->|raw data -> stats data| AF[Airflow]
+  AF -->|store stats data| CH
+  CH --> MB[Metabase<br/>dashboards]
