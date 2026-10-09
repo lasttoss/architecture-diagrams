@@ -84,10 +84,67 @@ to be latency-aware; per-region Redis means a cold cache after a failover; and r
 to the client puts a decision in the client's hands - acceptable for a game, where reconnecting to
 the nearest region is exactly what you want.
 
+## 3. A game server kit that does not depend on its runtime
+
+```mermaid
+%% Source for docs/diagrams/package-boundaries.html
+%% The claim: four packages that know nothing about the Nakama runtime, so every test is a plain `go test -race`.
+flowchart LR
+  subgraph NK["Nakama runtime (outside: go.mod has no require)"]
+    M["InitModule<br/>NakamaModule"]
+    SE[("storage engine")]
+    MATCH["match handler"]
+  end
+  subgraph KIT["nakama-go-server-kit · 0 dependencies"]
+    RP["rpc<br/>Registry · Decode · Error"]
+    ST["storage<br/>Store = Read + Write(version)"]
+    MA["match<br/>Start/Run · Clock · NearestRank"]
+    TK["testkit<br/>FakeClock · MemStore · LogRecorder"]
+  end
+  M -->|"adapter"| RP
+  M -->|"adapter"| ST
+  MATCH -->|"adapter"| MA
+  TK -.->|"fakes implement the same interfaces"| ST
+  TK -.-> MA
+  ST -.->|"CAS: version in, version out"| SE
+  classDef kit fill:#eef5ef,stroke:#1a6b3c;
+  class RP,ST,MA,TK kit;
+```
+
+**Source.** [`./diagrams/game-server-kit-boundaries.mmd`](./diagrams/game-server-kit-boundaries.mmd)
+
+**Problem.** The part of a game server that decides what happens needs a server runtime to run in, and a runtime changes on its own release cycle. A test that needs a running server is a test that stops being run.
+
+**Decisions.** Four packages that name only interfaces - match, storage, rpc and a testkit - with the adapters living in the server that uses the kit rather than in the kit. The store is a compare-and-swap shape: a read and a write both carry a version, so the same logic runs against the runtime's storage engine and against a fake that keeps a real version.
+
+**Trade-offs.** An interface at each boundary is more code than a direct call, and the wiring moves into the server. What it buys: 55 tests that run in about a second with no server to start, and a body of logic that cannot acquire a dependency on a runtime release. The editorial version, with the measured numbers, is in [nakama-go-server-kit](https://github.com/lasttoss/nakama-go-server-kit/tree/main/docs/diagrams).
+
+## 4. One tick of a 30 Hz UDP room, end to end
+
+```mermaid
+%% Source for docs/diagrams/tick-roundtrip.html
+%% One tick, end to end: input in, snapshot out, and the two things that are easy to get wrong in between.
+flowchart LR
+  B["botswarm<br/>1000 simulated clients"] -->|"INPUT 7B · 30 Hz"| G["gateway<br/>UDP socket · opcodes"]
+  G --> R["relay<br/>fixed 30 Hz tick<br/>quantise int16 · AckSeq"]
+  R -->|"SNAPSHOT 74B (10 players)"| B
+  V["canvas viewer<br/>GET /v1/rooms/:id/state"] -.->|"not in the hot path"| G
+  L["a packet is lost"] -.-> R
+  R -.->|"peers keep interpolating<br/>the last known position"| V
+```
+
+**Source.** [`./diagrams/udp-tick-roundtrip.mmd`](./diagrams/udp-tick-roundtrip.mmd)
+
+**Problem.** A realtime room has 33.3 ms per tick and UDP loses packets. The two failures a player notices are a peer that freezes and a client that has already moved past the snapshot it is being sent.
+
+**Decisions.** One fixed-tick simulation per room, positions quantised to centimetres in an int16 so a ten-player snapshot is 74 bytes, rooms bucketed by region so no two matches share a write path, and an AckSeq in every snapshot so a client can replay its inputs and reconcile. A peer that stops being heard from keeps being interpolated from its last known position and is dropped after a timeout.
+
+**Trade-offs.** Interpolation means a peer briefly sees a guess, and quantisation bounds precision to a centimetre. Both are deliberate: the alternative is more bandwidth and resends on a path where the measurement that matters is the tick loop, which spends 19.7 ms of its 33.3 ms budget at the 99th percentile. The editorial version is in [udp-realtime-gameserver](https://github.com/lasttoss/udp-realtime-gameserver/tree/main/docs/diagrams).
+
 ## How this repository stays honest
 
 `npm scripts/check-diagrams.mjs` (run in CI) fails when a diagram source and the README drift
-apart: every `diagrams/*.mmd` file must be referenced from the README, and the README must not
+apart: every `./diagrams/*.mmd` file must be referenced from the README, and the README must not
 contain a diagram without a source file.
 
 ## Note on scope
@@ -102,7 +159,7 @@ MIT - see [LICENSE](LICENSE).
 
 ## About the image files
 
-`diagrams/*.mmd` are the English sources of both diagrams, and they are the versions CI keeps in
+`./diagrams/*.mmd` are the English sources of both diagrams, and they are the versions CI keeps in
 sync with the README. The two `*.drawio.png` files are the exports of the original draw.io files,
 kept because they are the artefacts as they were drawn at the time; their labels are in Vietnamese.
 Read the mermaid sources, not the PNGs.
