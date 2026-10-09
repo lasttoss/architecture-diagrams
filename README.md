@@ -99,3 +99,10 @@ configuration are included, and no code from those systems lives in this reposit
 ## License
 
 MIT - see [LICENSE](LICENSE).
+
+## About the image files
+
+`diagrams/*.mmd` are the English sources of both diagrams, and they are the versions CI keeps in
+sync with the README. The two `*.drawio.png` files are the exports of the original draw.io files,
+kept because they are the artefacts as they were drawn at the time; their labels are in Vietnamese.
+Read the mermaid sources, not the PNGs.
