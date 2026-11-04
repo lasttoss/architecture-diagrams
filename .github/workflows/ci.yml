@@ -16,3 +16,5 @@ jobs:
           node-version: "20"
       - name: Every diagram in README.md has a mermaid source next to it
         run: node scripts/check-diagrams.mjs
+      - name: Every Mermaid diagram must parse
+        run: cd tools/mermaid-check && npm ci --silent --no-audit --no-fund && node check.mjs
